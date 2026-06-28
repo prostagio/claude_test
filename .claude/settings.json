@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /mnt/c/Users/Fastm/OneDrive/Desktop/btc && git add btc_tracker.py web_tracker.py index.html requirements.txt CLAUDE.md .gitignore .claude/settings.json 2>/dev/null; if ! git diff --cached --quiet; then git commit -m \"Auto-save: $(date '+%Y-%m-%d %H:%M:%S')\"; git push origin main; fi",
+            "timeout": 30,
+            "statusMessage": "Saving changes to GitHub…"
+          }
+        ]
+      }
+    ]
+  }
+}
