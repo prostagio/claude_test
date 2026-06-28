@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BTC Polymarket Tracker</title>
+  <style>
+    :root {
+      --bg:     #0d1117;
+      --bg2:    #161b22;
+      --bg3:    #21262d;
+      --border: #30363d;
+      --text:   #e6edf3;
+      --dim:    #7d8590;
+      --up:     #3fb950;
+      --dn:     #f85149;
+      --btc:    #f7931a;
+      --blue:   #58a6ff;
+      --yellow: #e3b341;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+      font-size: 14px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .logo { color: var(--btc); font-weight: 700; letter-spacing: 2px; font-size: 13px; }
+    .header-right { display: flex; align-items: center; gap: 18px; font-size: 12px; color: var(--dim); }
+    #conn-status { font-weight: 600; }
+    .live  { color: var(--up)  !important; }
+    .dead  { color: var(--dn)  !important; }
+    .stale { color: var(--yellow) !important; }
+
+    /* ── Layout ── */
+    .main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+    .top-grid { display: grid; grid-template-columns: 360px 1fr; gap: 14px; }
+
+    /* ── Cards ── */
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .card-head {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; color: var(--dim);
+      letter-spacing: 1.5px; text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-body { padding: 14px; }
+
+    /* ── Exchange table ── */
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 7px 8px; }
+    th { font-size: 10px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid var(--border); text-align: right; }
+    th:first-child { text-align: left; }
+    tr + tr td { border-top: 1px solid var(--border); }
+    tr.sep td  { border-top: 2px solid var(--border); }
+    .ex-name  { color: var(--text); }
+    .ex-price { text-align: right; font-weight: 600; font-size: 14px; }
+    .ex-snap  { text-align: right; font-size: 13px; color: var(--dim); }
+    .ex-gap   { text-align: right; font-size: 13px; font-weight: 600; }
+    .ex-dot   { text-align: center; font-size: 10px; width: 18px; }
+    .flash { animation: flash 0.4s ease; }
+    @keyframes flash { 0% { background: rgba(88,166,255,.2); } 100% { background: transparent; } }
+
+    /* ── Market panel ── */
+    .mkt-title  { font-size: 13px; margin-bottom: 4px; }
+    .mkt-sub    { font-size: 11px; color: var(--dim); margin-bottom: 14px; }
+
+    .countdown  { font-size: 32px; font-weight: 700; letter-spacing: 3px; color: var(--yellow); margin-bottom: 14px; }
+    .countdown.urgent { color: var(--dn); animation: pulse 0.8s infinite; }
+    .countdown.done   { color: var(--dim); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .candle-row {
+      padding: 8px 12px; border-radius: 5px; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px; font-size: 12px;
+    }
+    .candle-row.green { background: rgba(63,185,80,.1); border: 1px solid rgba(63,185,80,.3); }
+    .candle-row.red   { background: rgba(248,81,73,.1);  border: 1px solid rgba(248,81,73,.3); }
+    .candle-row.flat  { background: var(--bg3); border: 1px solid var(--border); color: var(--dim); }
+
+    .outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .oc-box { background: var(--bg3); border-radius: 6px; padding: 12px; border-left: 3px solid transparent; }
+    .oc-box.up { border-left-color: var(--up); }
+    .oc-box.dn { border-left-color: var(--dn); }
+    .oc-label { font-size: 10px; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; margin-bottom: 6px; }
+    .oc-price { font-size: 24px; font-weight: 700; line-height: 1; margin-bottom: 3px; }
+    .oc-box.up .oc-price { color: var(--up); }
+    .oc-box.dn .oc-price { color: var(--dn); }
+    .oc-pct   { font-size: 12px; color: var(--dim); margin-bottom: 10px; }
+    .bar-bg   { height: 7px; background: var(--bg2); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+    .bar-up { background: linear-gradient(90deg, #2ea043, #3fb950); }
+    .bar-dn { background: linear-gradient(90deg, #b91c1c, #f85149); }
+    .oc-ba  { font-size: 10px; color: var(--dim); }
+
+    .dir-badge {
+      text-align: center; padding: 10px; border-radius: 5px;
+      font-weight: 700; font-size: 13px; letter-spacing: 1px;
+    }
+    .dir-badge.bull { background: rgba(63,185,80,.1); border: 1px solid rgba(63,185,80,.4); color: var(--up); }
+    .dir-badge.bear { background: rgba(248,81,73,.1);  border: 1px solid rgba(248,81,73,.4); color: var(--dn); }
+
+    /* ── Target price ── */
+    .target-box {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;
+    }
+    .target-label { font-size: 10px; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; margin-bottom: 3px; }
+    .target-price { font-size: 22px; font-weight: 700; color: var(--btc); }
+    .target-delta { text-align: right; }
+    .target-delta-val { font-size: 16px; font-weight: 700; }
+    .target-delta-pct { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 14px; font-size: 11px; color: var(--dim);
+      display: flex; justify-content: space-between;
+    }
+
+    @media(max-width:900px)  { .top-grid{grid-template-columns:1fr;} }
+    @media(max-width:580px)  { .outcomes{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">₿ POLYMARKET BTC 5-MIN TRACKER</div>
+  <div class="header-right">
+    <span id="conn-status" class="dead">● Connecting…</span>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<div class="main">
+
+  <div class="top-grid">
+
+    <!-- Exchange prices -->
+    <div class="card">
+      <div class="card-head">
+        <span>BTC / USD — Live Prices</span>
+        <span id="avg-price" style="color:var(--btc)">—</span>
+      </div>
+      <div class="card-body" style="padding:0">
+        <table>
+          <thead><tr>
+            <th style="text-align:left">Source</th>
+            <th>Live Price</th>
+            <th id="snap-hdr">Ref Price</th>
+            <th>Gap vs Ref</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="ex-rows">
+            <tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center">Connecting…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Current market -->
+    <div class="card">
+      <div class="card-head">
+        <span>CURRENT 5-MIN MARKET</span>
+        <span id="pm-status" style="color:var(--dim)">Searching…</span>
+      </div>
+      <div class="card-body" id="mkt-body">
+        <div style="color:var(--dim);padding:30px 0;text-align:center">Searching for active market…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span>Resolution: <strong>Chainlink BTC/USD stream</strong> — UP if close ≥ open, DOWN otherwise</span>
+    <span id="poll-age">—</span>
+  </footer>
+
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const usd = v => v == null ? '--' : '$' + Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const p4  = v => v == null ? '--' : Number(v).toFixed(4);
+const pct = v => v == null ? '--%' : (v*100).toFixed(1)+'%';
+const TZ = 'Asia/Tbilisi';
+const et = v => {
+  if (!v) return '--';
+  return new Date(v).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:TZ,hour12:false})+' GET';
+};
+
+function mkTitle(m) {
+  if (!m || !m.start_time || !m.end_time) return (m && m.title) || '—';
+  const sd = new Date(m.start_time), ed = new Date(m.end_time);
+  const dateStr = sd.toLocaleDateString('en-US', {timeZone:TZ, month:'short', day:'numeric'});
+  const startT  = sd.toLocaleTimeString('en-US', {timeZone:TZ, hour:'2-digit', minute:'2-digit', hour12:false});
+  const endT    = ed.toLocaleTimeString('en-US', {timeZone:TZ, hour:'2-digit', minute:'2-digit', hour12:false});
+  return `BTC Up or Down · ${dateStr} · ${startT}–${endT} GET`;
+}
+
+function timeLeft(iso) {
+  if (!iso) return {t:'--', cls:''};
+  const s = Math.floor((new Date(iso)-Date.now())/1000);
+  if (s <= 0) return {t:'DONE', cls:'done'};
+  if (s <= 30) return {t:s+'s', cls:'urgent'};
+  return {t: Math.floor(s/60)+':'+String(s%60).padStart(2,'0'), cls:''};
+}
+
+// ── Clock (Tbilisi GET = UTC+4) ───────────────────────────────────────────────
+setInterval(() => {
+  $('clock').textContent = new Date().toLocaleTimeString('en-US',{
+    timeZone: TZ, hour12: false,
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  }) + ' GET';
+}, 1000);
+
+// ── Countdown ticker (runs independently every 200ms) ────────────────────────
+let endIso = null;
+setInterval(() => {
+  const el = $('cd');
+  if (!el) return;
+  const {t,cls} = timeLeft(endIso);
+  el.textContent = t;
+  el.className = 'countdown ' + cls;
+}, 200);
+
+// ── Exchange table ────────────────────────────────────────────────────────────
+const EXCH = ['Binance','Coinbase','Kraken','OKX','Bybit'];
+const prev = {};
+
+function renderExchanges(btc, btcTs, uniRef, refSrc) {
+  const now = Date.now()/1000;
+  const vals = [];
+  let html = '';
+
+  // Update header to show which reference source is being used
+  const hdr = $('snap-hdr');
+  if (hdr) hdr.textContent = refSrc || 'Ref Price';
+
+  const refCell = uniRef != null ? usd(uniRef) : '<span style="color:var(--dim)">—</span>';
+
+  for (const ex of EXCH) {
+    const p = btc[ex], ts = btcTs[ex];
+    if (p != null) vals.push(p);
+
+    // Live price cell
+    let dot = '○', dotCls = '', liveCell;
+    if (p != null) {
+      const age = now - ts;
+      const col = age<3 ? 'var(--up)' : age<10 ? 'var(--yellow)' : 'var(--dim)';
+      dotCls = age<3 ? 'live' : age<10 ? 'stale' : '';
+      dot = '●';
+      const flash = prev[ex] !== p ? 'flash' : '';
+      prev[ex] = p;
+      liveCell = `<span class="${flash}" style="color:${col}">${usd(p)}</span>`;
+    } else {
+      liveCell = `<span style="color:var(--dim)">connecting…</span>`;
+    }
+
+    // Gap vs unified reference (Chainlink or kline)
+    let gapCell = '<span style="color:var(--dim)">—</span>';
+    if (p != null && uniRef != null) {
+      const diff = p - uniRef;
+      const col  = diff >= 0 ? 'var(--up)' : 'var(--dn)';
+      const sign = diff >= 0 ? '+' : '';
+      const pctV = (diff / uniRef * 100).toFixed(3);
+      gapCell = `<span style="color:${col}">${sign}${usd(diff)}<br><small style="font-weight:400;font-size:10px">${sign}${pctV}%</small></span>`;
+    }
+
+    html += `<tr>
+      <td class="ex-name">${ex}</td>
+      <td class="ex-price">${liveCell}</td>
+      <td class="ex-snap">${refCell}</td>
+      <td class="ex-gap">${gapCell}</td>
+      <td class="ex-dot ${dotCls}">${dot}</td>
+    </tr>`;
+  }
+
+  let avg = null;
+  if (vals.length) {
+    avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    $('avg-price').textContent = usd(avg);
+    let avgGapCell = '<span style="color:var(--dim)">—</span>';
+    if (uniRef != null) {
+      const diff = avg - uniRef;
+      const col  = diff >= 0 ? 'var(--up)' : 'var(--dn)';
+      const sign = diff >= 0 ? '+' : '';
+      const pctV = (diff / uniRef * 100).toFixed(3);
+      avgGapCell = `<span style="color:${col}">${sign}${usd(diff)}<br><small style="font-weight:400;font-size:10px">${sign}${pctV}%</small></span>`;
+    }
+    html += `<tr class="sep">
+      <td style="color:var(--dim)">Average</td>
+      <td class="ex-price" style="color:var(--text)">${usd(avg)}</td>
+      <td class="ex-snap">${refCell}</td>
+      <td class="ex-gap">${avgGapCell}</td>
+      <td></td>
+    </tr>`;
+  }
+  $('ex-rows').innerHTML = html;
+  return avg;
+}
+
+// ── Market panel ──────────────────────────────────────────────────────────────
+function renderMarket(m, avg, btcPrices) {
+  if (!m) {
+    $('mkt-body').innerHTML = '<div style="color:var(--dim);padding:30px 0;text-align:center">No active market found</div>';
+    endIso = null; return;
+  }
+  endIso = m.end_time;
+
+  const up = m.up_price, dn = m.dn_price;
+  const {t:cdT, cls:cdCls} = timeLeft(m.end_time);
+
+  // Price to beat priority: Polymarket Chainlink → Binance 5m kline open → live snapshot
+  let ref = null, refSrc = null;
+  if (m.candle_ref_price != null) {
+    ref = m.candle_ref_price; refSrc = 'Chainlink · Polymarket';
+  } else if (m.candle_kline != null) {
+    ref = m.candle_kline; refSrc = 'Binance 5m open';
+  } else if (m.candle_open != null) {
+    ref = m.candle_open; refSrc = 'Live snapshot';
+  }
+
+  // Use Binance live price for comparison (closest proxy to Polymarket's Chainlink feed)
+  const livePrice = (btcPrices && btcPrices['Binance'] != null) ? btcPrices['Binance'] : avg;
+
+  // Target price block
+  let targetHtml = '';
+  if (ref != null && livePrice) {
+    const diff    = livePrice - ref;
+    const isUp    = diff >= 0;
+    const sign    = isUp ? '+' : '−';
+    const absDiff = Math.abs(diff);
+    const diffPct = (absDiff / ref * 100).toFixed(3);
+    const col     = isUp ? 'var(--up)' : 'var(--dn)';
+    const arrow   = isUp ? '▲' : '▼';
+    const label   = isUp ? 'ABOVE' : 'BELOW';
+    targetHtml = `
+      <div class="target-box">
+        <div>
+          <div class="target-label">🎯 Price to Beat · ${refSrc}</div>
+          <div class="target-price">${usd(ref)}</div>
+        </div>
+        <div class="target-delta">
+          <div class="target-delta-val" id="delta-val" style="color:${col}">${arrow} ${sign}${usd(absDiff)}</div>
+          <div class="target-delta-pct" id="delta-pct">${sign}${diffPct}% · <span style="color:${col}">${label}</span></div>
+        </div>
+      </div>`;
+  } else {
+    targetHtml = `
+      <div class="target-box">
+        <div>
+          <div class="target-label">🎯 Price to Beat</div>
+          <div class="target-price" style="color:var(--dim)">Fetching…</div>
+        </div>
+        <div style="font-size:11px;color:var(--dim)">Loading Binance 5m open…</div>
+      </div>`;
+  }
+
+  // Candle direction bar
+  let candleHtml = '';
+  if (ref != null && livePrice) {
+    const diff    = livePrice - ref;
+    const isUp    = diff >= 0;
+    const sign    = isUp ? '+' : '−';
+    const diffPct = (Math.abs(diff)/ref*100).toFixed(3);
+    candleHtml = `
+      <div class="candle-row ${isUp?'green':'red'}" id="candle-bar">
+        <span style="font-size:18px">${isUp?'▲':'▼'}</span>
+        <div>
+          <div id="candle-label" style="font-weight:700;color:var(--${isUp?'up':'dn'})">${isUp?'CANDLE GREEN ▲':'CANDLE RED ▼'}</div>
+          <div id="candle-sub" style="color:var(--dim);font-size:11px">Open ${usd(ref)} → Now ${usd(livePrice)} (${sign}${diffPct}%)</div>
+        </div>
+      </div>`;
+  } else {
+    candleHtml = `<div class="candle-row flat">⏳&nbsp; Candle direction will appear once price-to-beat is fetched</div>`;
+  }
+
+  // Direction badge
+  let badgeHtml = '';
+  if (up != null && dn != null) {
+    const isBull = up > dn;
+    const edge = (Math.abs(up-dn)*100).toFixed(1);
+    badgeHtml = `<div class="dir-badge ${isBull?'bull':'bear'}">${isBull?'▲ MARKET BULLISH':'▼ MARKET BEARISH'} <span style="font-weight:400;opacity:.7;font-size:11px">Edge ${edge}%</span></div>`;
+  }
+
+  // Bid/ask strings
+  const upBA = (m.up_bid||m.up_ask) ? `bid ${p4(m.up_bid)} / ask ${p4(m.up_ask)}` : 'fetching…';
+  const dnBA = (m.dn_bid||m.dn_ask) ? `bid ${p4(m.dn_bid)} / ask ${p4(m.dn_ask)}` : 'fetching…';
+
+  $('mkt-body').innerHTML = `
+    <div class="mkt-title">${mkTitle(m)}</div>
+    <div class="mkt-sub">${et(m.start_time)} → ${et(m.end_time)} · Chainlink BTC/USD</div>
+
+    ${targetHtml}
+
+    <div class="countdown ${cdCls}" id="cd">${cdT}</div>
+
+    ${candleHtml}
+
+    <div class="outcomes">
+      <div class="oc-box up">
+        <div class="oc-label">⬆ UP (YES)</div>
+        <div class="oc-price">${p4(up)}</div>
+        <div class="oc-pct">${pct(up)} probability</div>
+        <div class="bar-bg"><div class="bar-fill bar-up" style="width:${up!=null?up*100:0}%"></div></div>
+        <div class="oc-ba">${upBA}</div>
+      </div>
+      <div class="oc-box dn">
+        <div class="oc-label">⬇ DOWN (NO)</div>
+        <div class="oc-price">${p4(dn)}</div>
+        <div class="oc-pct">${pct(dn)} probability</div>
+        <div class="bar-bg"><div class="bar-fill bar-dn" style="width:${dn!=null?dn*100:0}%"></div></div>
+        <div class="oc-ba">${dnBA}</div>
+      </div>
+    </div>
+
+    ${badgeHtml}
+  `;
+}
+
+// ── Data layer ────────────────────────────────────────────────────────────────
+let _last = null;   // most recent server payload
+
+// Fast path — runs every 100ms, updates only delta + direction bar in-place
+function fastUpdate() {
+  if (!_last) return;
+  const m = (_last.markets||[])[0];
+  if (!m) return;
+
+  let ref = null;
+  if (m.candle_ref_price != null)  ref = m.candle_ref_price;
+  else if (m.candle_kline != null) ref = m.candle_kline;
+  else if (m.candle_open != null)  ref = m.candle_open;
+  if (ref == null) return;
+
+  const live = (_last.btc||{})['Binance'];
+  if (live == null) return;
+
+  const diff    = live - ref;
+  const isUp    = diff >= 0;
+  const sign    = isUp ? '+' : '−';
+  const absDiff = Math.abs(diff);
+  const diffPct = (absDiff / ref * 100).toFixed(3);
+  const col     = isUp ? 'var(--up)' : 'var(--dn)';
+  const arrow   = isUp ? '▲' : '▼';
+  const label   = isUp ? 'ABOVE' : 'BELOW';
+
+  const dv = $('delta-val'), dp = $('delta-pct');
+  if (dv) { dv.style.color = col; dv.textContent = `${arrow} ${sign}${usd(absDiff)}`; }
+  if (dp) { dp.innerHTML = `${sign}${diffPct}% · <span style="color:${col}">${label}</span>`; }
+
+  const bar = $('candle-bar'), lbl = $('candle-label'), sub = $('candle-sub');
+  if (bar) {
+    bar.className = `candle-row ${isUp?'green':'red'}`;
+    if (lbl) { lbl.style.color = `var(--${isUp?'up':'dn'})`; lbl.textContent = isUp ? 'CANDLE GREEN ▲' : 'CANDLE RED ▼'; }
+    if (sub) sub.textContent = `Open ${usd(ref)} → Now ${usd(live)} (${sign}${diffPct}%)`;
+  }
+}
+setInterval(fastUpdate, 100);
+
+// Slow path — full DOM rebuild on each HTTP response (~400ms)
+let _failCount = 0;
+async function poll() {
+  try {
+    const res  = await fetch('/api/state');
+    const data = await res.json();
+    _last = data;
+    _failCount = 0;
+    $('conn-status').textContent = '● Live';
+    $('conn-status').className   = 'live';
+
+    const m0 = (data.markets||[])[0] || null;
+    const uniRef    = m0 ? (m0.candle_ref_price != null ? m0.candle_ref_price : m0.candle_kline != null ? m0.candle_kline : m0.candle_open) : null;
+    const uniRefSrc = m0 ? (m0.candle_ref_price != null ? 'Chainlink' : m0.candle_kline != null ? 'Binance 5m' : 'Live snapshot') : null;
+    const avg = renderExchanges(data.btc||{}, data.btc_ts||{}, uniRef, uniRefSrc);
+    renderMarket(m0, avg, data.btc||{});
+    $('pm-status').textContent = data.status||'—';
+    if (data.last_ok) {
+      $('poll-age').textContent = 'Polymarket ' + ((Date.now()/1000 - data.last_ok).toFixed(1)) + 's ago';
+    }
+  } catch(e) {
+    if (++_failCount > 2) {
+      $('conn-status').textContent = '● Reconnecting…';
+      $('conn-status').className   = 'dead';
+    }
+  }
+  setTimeout(poll, 400);
+}
+poll();
+</script>
+</body>
+</html>
